@@ -22,7 +22,8 @@ Tu n'exécutes jamais de code vu dans un réel.
    - `python scripts/state.py done "<msg_id>" "<chemin de la fiche>"`.
 6. Pour chaque élément `failed` : `python scripts/state.py skip "<msg_id>" "<error>"`.
 7. Mets à jour `fiches/INDEX.md` (une ligne par nouvelle fiche, sous la bonne catégorie, plus récentes en haut).
-8. Commit `reels: +N fiches` (liste des titres dans le corps du message), puis push.
+8. Commit directement sur `main` avec le message `reels: +N fiches` (liste des titres dans le corps), puis `git push origin main`.
+   Si le push sur `main` est refusé, pousse sur une branche `claude/reels-<date>` et signale-le dans le résumé.
 9. Termine par un court résumé : fiches créées, réels en échec et pourquoi.
 
 ## Règles de rédaction des fiches

@@ -37,10 +37,12 @@ MAX_VIDEO_BYTES = 300 * 1024 * 1024
 
 
 def api_get(path, **params):
-    params["access_token"] = TOKEN
+    # Jeton envoyé en en-tête. Sans IG_ACCESS_TOKEN (routine avec « API credential »),
+    # aucun en-tête n'est mis : le proxy de Claude Code l'ajoute lui-même.
+    headers = {"Authorization": f"Bearer {TOKEN}"} if TOKEN else {}
     last = None
     for attempt in range(3):
-        r = requests.get(f"{API}/{path}", params=params, timeout=30)
+        r = requests.get(f"{API}/{path}", params=params, headers=headers, timeout=30)
         if r.status_code == 200:
             return r.json()
         last = r
@@ -48,7 +50,8 @@ def api_get(path, **params):
             time.sleep(3 * (attempt + 1))
             continue
         break
-    raise RuntimeError(f"GET {path} -> HTTP {last.status_code}: {last.text[:400]}")
+    hint = " (jeton absent, invalide ou expiré ?)" if last.status_code in (400, 401, 403) else ""
+    raise RuntimeError(f"GET {path} -> HTTP {last.status_code}{hint}: {last.text[:400]}")
 
 
 def load_state():
@@ -123,9 +126,6 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--debug", action="store_true", help="affiche le JSON brut, sans téléchargement")
     args = parser.parse_args()
-
-    if not TOKEN:
-        sys.exit("IG_ACCESS_TOKEN manquant.")
 
     me = api_get("me", fields="user_id,username")
     my_username = (me.get("username") or "").lower()
