@@ -4,6 +4,7 @@
   "warn_days_before_expiry": 10,
   "max_reels_per_run": 5,
   "max_attempts": 3,
-  "max_frames": 15,
+  "max_frames": 20,
+  "max_assets": 5,
   "apify_actor": "apify~instagram-reel-scraper"
 }

@@ -1,20 +1,22 @@
 #!/usr/bin/env python3
 """Termine une exécution, après la rédaction des fiches par Claude :
 - copie dans <KB>/fiches/<categorie>/assets/ les images clés que les fiches référencent
-  (convention : assets/<short_id>-<image de frames>.jpg, 2 par fiche au plus) ;
+  (convention : assets/<short_id>-<image de frames>[-y<début>-<fin>].jpg, max_assets par fiche au plus ;
+  le suffixe -y garde la bande horizontale entre <début> et <fin> % de la hauteur) ;
 - marque comme traité chaque réel dont la fiche existe (champ msg_id du frontmatter) ;
 - compte un échec pour chaque réel prêt resté sans fiche, pour qu'il ne soit pas retraité sans fin ;
 - écrit le message de commit dans work/commit_message.txt.
 """
 import re
 import shutil
+import subprocess
 import sys
 from datetime import date
 
 from common import CONFIG, KB, WORK, load_queue, load_state, record_failure, save_state
 
-ASSET_RE = re.compile(r"\]\(assets/([0-9a-f]{12})-(t[0-9.]+s\.jpg)\)")
-MAX_ASSETS = 2
+ASSET_RE = re.compile(r"\]\(assets/([0-9a-f]{12})-(t[0-9.]+s)(?:-y([0-9]{1,3})-([0-9]{1,3}))?\.jpg\)")
+CROP_MARGIN = 3  # % ajoutés de part et d'autre de la bande demandée : le rédacteur l'estime à l'œil
 
 
 def frontmatter(path):
@@ -30,12 +32,22 @@ def frontmatter(path):
 
 
 def copy_assets(fiche, short_id):
-    for sid, frame in ASSET_RE.findall(fiche.read_text())[:MAX_ASSETS]:
-        src = WORK / sid / "frames" / frame
-        dest = fiche.parent / "assets" / f"{sid}-{frame}"
-        if sid == short_id and src.exists() and not dest.exists():
-            dest.parent.mkdir(exist_ok=True)
+    for m in list(ASSET_RE.finditer(fiche.read_text()))[:CONFIG["max_assets"]]:
+        sid, frame, top, bottom = m.groups()
+        src = WORK / sid / "frames" / f"{frame}.jpg"
+        dest = fiche.parent / m.group(0)[2:-1]
+        if sid != short_id or not src.exists() or dest.exists():
+            continue
+        dest.parent.mkdir(exist_ok=True)
+        if top is None:
             shutil.copyfile(src, dest)
+            continue
+        top, bottom = max(0, int(top) - CROP_MARGIN) / 100, min(100, int(bottom) + CROP_MARGIN) / 100
+        if bottom - top < 0.15:  # bande absurde : on garde l'image entière
+            top, bottom = 0, 1
+        subprocess.run(["ffmpeg", "-v", "error", "-y", "-i", str(src), "-vf",
+                        f"crop=iw:trunc(ih*{bottom - top:.2f}/2)*2:0:trunc(ih*{top:.2f}/2)*2",
+                        "-q:v", "3", str(dest)], check=False)
 
 
 def refused():

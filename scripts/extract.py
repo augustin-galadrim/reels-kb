@@ -13,16 +13,19 @@ import subprocess
 
 from common import CONFIG, ROOT, load_queue, save_queue
 
-# Sélection des images, réglée le 24/10/2026 sur 5 réels (dont un diagramme qui se construit : 8 images,
-# une par étape). On mesure la nouveauté dans les zones fixes de l'image (fond, schéma, code), pas là où
-# la personne bouge.
-SAMPLE_FPS = 2      # échantillons analysés par seconde (miniatures 72x128 en niveaux de gris)
+# Sélection des images, réglée le 24/10/2026 sur 9 réels (schémas qui se construisent, animations sur fond
+# sombre, plans alternés présentateur / interlocuteur, écran partagé schéma / visage). On mesure la nouveauté
+# dans les zones fixes de l'image (fond, schéma, code), pas là où la personne bouge.
+SAMPLE_FPS = 2      # échantillons analysés par seconde (miniatures 144x256 en niveaux de gris)
+THUMB = (144, 256)
 CUT = 0.18          # écart moyen entre deux échantillons consécutifs au-delà duquel on change de plan
 STATIC = 0.02       # un pixel est « fixe » s'il bouge peu au moins 75 % du temps
 STRONG = 0.15       # écart d'un pixel qui compte comme un vrai changement
 NEW_CONTENT = 0.008 # part des pixels fixes changés, et restés changés 1 s, qui fait une nouvelle étape
-SAME_STATE = 0.02   # écart moyen sur les zones fixes sous lequel deux images montrent le même état
-MIN_GAP = 1.0       # images à moins d'une seconde l'une de l'autre : on garde la plus récente
+MIN_GAP = 1.0       # images d'un même plan à moins d'une seconde l'une de l'autre : on garde la plus récente
+STILL = 0.06        # écart sous lequel un pixel est immobile pendant la seconde qui précède une image
+SAME_SHOT = 0.02    # part des pixels immobiles qui diffèrent sous laquelle deux plans montrent la même chose
+                    # (mesuré : 0,5 à 1,6 % pour une même personne filmée, 2,6 % et plus entre deux schémas)
 
 
 def duration_of(video):
@@ -38,15 +41,19 @@ def uniform_times(duration, n):
 def frame_times(video, duration, max_frames):
     """Instants à capturer : la fin de chaque état visuel distinct, là où il est le plus complet.
     - Une coupe de plan, ou un ajout qui reste à l'écran dans les zones fixes (diagramme qui se construit,
-      code qui s'écrit), termine un état : on garde l'image juste avant, puis la dernière de la vidéo.
-    - Les images voisines qui montrent le même état (jump cuts d'une même personne) sont fusionnées.
-    - Au-delà de max_frames, on garde des images réparties sur la durée, la dernière toujours comprise."""
+      code qui s'écrit), termine un état : on garde l'image juste avant.
+    - Dans un même plan, deux fins d'état à moins d'une seconde n'en font qu'une ; jamais à travers une coupe.
+    - Un plan qui montre la même chose qu'un plan précédent (la personne qui revient entre deux schémas,
+      jump cuts) remplace celui-ci : une seule image par décor, la plus récente.
+    - Au-delà de max_frames, on garde les états restés le plus longtemps à l'écran : les étapes qu'on
+      explique plutôt que les animations de passage."""
     try:
         import numpy as np
+        w, h = THUMB
         raw = subprocess.run(["ffmpeg", "-v", "error", "-i", str(video), "-vf",
-                              f"fps={SAMPLE_FPS},scale=72:128,format=gray", "-f", "rawvideo", "-"],
+                              f"fps={SAMPLE_FPS},scale={w}:{h},format=gray", "-f", "rawvideo", "-"],
                              capture_output=True, check=True).stdout
-        s = np.frombuffer(raw, np.uint8).reshape(-1, 72 * 128).astype(np.float32) / 255
+        s = np.frombuffer(raw, np.uint8).reshape(-1, w * h).astype(np.float32) / 255
     except (ImportError, subprocess.CalledProcessError, ValueError):
         return uniform_times(duration, max_frames)
     n = len(s)
@@ -57,9 +64,10 @@ def frame_times(video, duration, max_frames):
     if static.mean() < 0.15:  # tout l'écran bouge (enregistrement d'écran, défilement) : mesure globale
         static = np.ones_like(static)
 
-    events, ref = [], 0
+    cuts, events, ref = {0}, [], 0
     for i in range(1, n):
         if np.abs(s[i] - s[i - 1]).mean() > CUT:
+            cuts.add(i)
             events.append(i)
             ref = i
             continue
@@ -69,25 +77,36 @@ def frame_times(video, duration, max_frames):
         if changed.mean() > NEW_CONTENT:
             events.append(i)
             ref = i
+    shot_start = np.maximum.accumulate([i if i in cuts else 0 for i in range(n)])
 
     candidates, anchor = [], None
     for i in sorted({e - 1 for e in events} | {n - 1}):
-        if anchor is not None and (i - anchor) / SAMPLE_FPS < MIN_GAP:
+        if anchor is not None and (i - anchor) / SAMPLE_FPS < MIN_GAP and shot_start[i] == shot_start[anchor]:
             candidates[-1] = i  # la plus récente est la plus complète
         else:
             candidates.append(i)
             anchor = i
-    kept = []
-    for k, i in enumerate(candidates):
-        if kept and k < len(candidates) - 1 and np.abs(s[i] - s[kept[-1]])[static].mean() <= SAME_STATE:
-            kept[-1] = i  # même état visuel
-        else:
-            kept.append(i)
+    shown = {c: c - p for p, c in zip([-1] + candidates, candidates)}  # durée à l'écran, en échantillons
 
-    times = [round(min(i / SAMPLE_FPS, duration - 0.1), 1) for i in kept]
-    if len(times) > max_frames:
-        times = [times[round(i * (len(times) - 1) / (max_frames - 1))] for i in range(max_frames)]
-    return times
+    def still(i):  # pixels immobiles dans la seconde qui précède, sans remonter avant le début du plan
+        lo = max(shot_start[i], i - SAMPLE_FPS)
+        return np.abs(s[lo:i + 1] - s[i]).max(axis=0) < STILL
+
+    def same_view(a, b):
+        mask = still(a) & still(b)
+        return mask.any() and (np.abs(s[a] - s[b]) > STRONG)[mask].mean() <= SAME_SHOT
+
+    views = []  # [première image, plus récente, durée à l'écran] ; comparées à leur première image
+    for c in candidates:
+        for v in views:
+            if shot_start[v[1]] != shot_start[c] and same_view(c, v[0]):
+                v[1], v[2] = c, max(v[2], shown[c])
+                break
+        else:
+            views.append([c, c, shown[c]])
+    if len(views) > max_frames:
+        views = sorted(views, key=lambda v: -v[2])[:max_frames]
+    return [round(min(v[1] / SAMPLE_FPS, duration - 0.1), 1) for v in sorted(views, key=lambda v: v[1])]
 
 
 def extract_frames(video, out_dir, duration):

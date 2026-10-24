@@ -8,7 +8,7 @@ Claude Code dans le cloud le récupère, le regarde, rédige une fiche technique
 routine cloud quotidienne (environnement « reels »)
   scripts/run.sh prepare
     ├─ fetch_reels.py   API Instagram (DM → permaliens) → Apify (vidéo, son, légende, auteur)
-    └─ extract.py       ffmpeg (≤ 15 images, une par état visuel distinct) + faster-whisper (transcription)
+    └─ extract.py       ffmpeg (≤ 20 images, une par état visuel distinct) + faster-whisper (transcription)
   Claude               regarde, rédige kb-reels/fiches/<cat>/<date>-<slug>.md
   scripts/run.sh publish
     └─ finalize.py      images clés, état, message de commit → commit + push sur kb-reels/main
@@ -27,7 +27,7 @@ le son séparé quand il le faut, la légende et l'auteur, sans compte Instagram
 - **Au plus 5 réels par exécution** (`config.json`), le reste passe le lendemain.
 - **Pas de retraitement sans fin** : chaque échec propre à un réel est compté ; au bout de 3, le réel est ignoré
   (`kb-reels/state/processed.json`). Une panne d'Instagram ou d'Apify arrête le lot sans pénaliser les réels.
-- **Moins de tokens d'images** : au plus 15 images par réel, une par état visuel distinct (les doublons des jump cuts sont fusionnés).
+- **Moins de tokens d'images** : au plus 20 images par réel, une par état visuel distinct ; un plan qui revient (la personne entre deux schémas, jump cuts) ne donne qu'une image ; au-delà de 20, on garde les états restés le plus longtemps à l'écran.
 - **Notifications push** : jeton bientôt expiré (10 jours avant), jeton expiré, Apify refusé (jeton ou quota),
   erreur temporaire, réels en échec, fiches publiées.
 - **Côté Apify** : fixe une limite mensuelle à 5 $ dans la console (*Billing → Limits*) pour ne jamais payer.
