@@ -8,7 +8,8 @@ Claude Code dans le cloud le récupère, le regarde, rédige une fiche technique
 routine cloud quotidienne (environnement « reels »)
   scripts/run.sh prepare
     ├─ fetch_reels.py   API Instagram (DM → permaliens) → Apify (vidéo, son, légende, auteur)
-    └─ extract.py       ffmpeg (≤ 20 images, une par état visuel distinct) + faster-whisper (transcription)
+    ├─ extract.py       ffmpeg (≤ 20 images, une par état visuel distinct) + faster-whisper (transcription)
+    └─ archive_raw.py   vidéo, Apify, transcription, images → kb-reels-raw (pour réanalyser sans repayer)
   Claude               regarde, rédige kb-reels/fiches/reels/<date>-<slug>.md et l'ajoute à ses thèmes
   scripts/run.sh publish
     └─ finalize.py      images clés, état, message de commit → commit + push sur kb-reels/main

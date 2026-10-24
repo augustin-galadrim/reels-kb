@@ -11,6 +11,7 @@
 set -uo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 export KB_DIR="${KB_DIR:-$(cd "$ROOT/.." && pwd)/kb-reels}"
+export RAW_DIR="${RAW_DIR:-$(cd "$ROOT/.." && pwd)/kb-reels-raw}"
 PY="${PYTHON:-python3}"
 cd "$ROOT"
 
@@ -56,12 +57,27 @@ publish() (  # sous-shell : le cd vers la KB ne doit pas changer le dossier de l
   fi
 )
 
+# Données brutes du lot (vidéo, Apify, transcription, images) poussées dans kb-reels-raw dès qu'elles sont prêtes,
+# avant la rédaction : un échec plus loin ne les perd pas. Un échec ici n'arrête pas le lot.
+archive() (
+  [ -d "$RAW_DIR/.git" ] || { echo "AVERTISSEMENT: repo kb-reels-raw introuvable, données brutes non archivées"; return 0; }
+  "$PY" scripts/archive_raw.py >/dev/null || { echo "AVERTISSEMENT: archivage des données brutes en échec"; return 0; }
+  cd "$RAW_DIR" && [ -d reels ] && git add -A reels || return 0
+  git diff --cached --quiet && return 0
+  git config user.email >/dev/null || git config user.email "noreply@anthropic.com"
+  git config user.name >/dev/null || git config user.name "reels-kb"
+  git commit -q -m "réels archivés le $(date +%F)" \
+    && { git push -q origin HEAD:main || { git pull -q --rebase origin main && git push -q origin HEAD:main; }; } \
+    || echo "AVERTISSEMENT: données brutes non poussées dans kb-reels-raw"
+)
+
 prepare() {
   [ -d "$KB_DIR/.git" ] || { echo "STATUT: ALERTE repo de la KB introuvable ($KB_DIR)"; return 2; }
   "$PY" scripts/fetch_reels.py
   local code=$?
   case $code in
-    0) "$PY" scripts/extract.py || { echo "STATUT: ERREUR extraction des images ou de la transcription"; return 3; } ;;
+    0) "$PY" scripts/extract.py || { echo "STATUT: ERREUR extraction des images ou de la transcription"; return 3; }
+       archive ;;
     1) publish >/dev/null || echo "AVERTISSEMENT: l'état n'a pas pu être publié dans la KB" ;;
   esac
   return $code
