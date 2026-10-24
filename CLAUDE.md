@@ -76,6 +76,20 @@ refuse tout le reste.
   avec `themes: []`, listée seulement dans « Toutes les fiches ».
 - Pour l'UX/UI, décris précisément ce qui est montré (mise en page, composants, interactions).
 
+## Schémas des fiches
+Un schéma vaut souvent mieux qu'un long paragraphe. GitHub affiche les blocs ```mermaid```.
+- Dès qu'une idée se dessine, mets un schéma Mermaid à la place d'un paragraphe ou en plus d'une image :
+  architecture et flux de données, échanges entre services, cycle de vie d'un objet, étapes d'une méthode.
+  Un schéma par idée, une quinzaine de nœuds au plus.
+- Dans « Quand l'utiliser », un arbre de décision ou une progression par palier aide souvent : il relève du jugement,
+  donc du `(hors réel)`, à mettre en titre du schéma.
+- Types : `flowchart LR` ou `flowchart TD` (architecture, flux, décision), `sequenceDiagram` (échanges dans le temps),
+  `stateDiagram-v2` (états).
+- Écris une syntaxe qui ne casse pas : des identifiants simples (`api`, `q1`), les libellés entre guillemets
+  (`q1["File (retry 1)"]`), aucune parenthèse, accolade ni deux-points hors des guillemets. Pas de `click`,
+  de lien ni de style : le contrôle de publication refuse `click` et `href`.
+- Le schéma dit la même chose que le texte et le réel ; il n'invente rien.
+
 ## Images des fiches
 Les images doivent permettre de comprendre la fiche sans revoir le réel.
 - Mets jusqu'à 5 images, chacune juste sous le passage qu'elle illustre : une par étape d'un schéma,

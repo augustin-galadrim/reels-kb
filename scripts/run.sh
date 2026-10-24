@@ -18,14 +18,16 @@ cd "$ROOT"
 # Contrôles avant commit des changements faits par le rédacteur (qui a lu du contenu non fiable) :
 # ajouts seulement sur l'existant, nommage attendu des nouveaux fichiers, aucun jeton dans le texte ajouté.
 check_fiches() {
-  local shrunk new_bad secret
+  local shrunk new_bad secret active
   shrunk=$(git diff --cached --numstat --diff-filter=MD -- fiches | awk '$2 != "0" {print $3}')
   new_bad=$(git diff --cached --name-only --diff-filter=A -- fiches | grep -vE \
     '^fiches/(INDEX\.md|themes/[a-z0-9-]{1,60}\.md|reels/([0-9]{4}-[0-9]{2}-[0-9]{2}-[a-z0-9-]{1,60}\.md|assets/[0-9a-f]{12}-t[0-9.]+s(-y[0-9]{1,3}-[0-9]{1,3})?\.jpg))$')
   secret=$(git diff --cached -U0 -- fiches | grep -E '^\+' \
     | grep -cE '(ghp_|gho_|ghs_|ghu_|github_pat_|sk-ant-|apify_api_|IGAA|EAA[A-Za-z0-9]{20})[A-Za-z0-9_-]{10,}')
-  [ -z "$shrunk" ] && [ -z "$new_bad" ] && [ "$secret" = "0" ] && return 0
-  echo "contrôle refusé : réécrit/supprimé=[${shrunk//$'\n'/ }] nommage=[${new_bad//$'\n'/ }] jetons=$secret" >&2
+  # Mermaid : pas de lien ni de rappel JavaScript dans un schéma rédigé à partir d'un réel.
+  active=$(git diff --cached -U0 -- fiches | grep -cE '^\+[[:space:]]*(click|href)[[:space:]]')
+  [ -z "$shrunk" ] && [ -z "$new_bad" ] && [ "$secret" = "0" ] && [ "$active" = "0" ] && return 0
+  echo "contrôle refusé : réécrit/supprimé=[${shrunk//$'\n'/ }] nommage=[${new_bad//$'\n'/ }] jetons=$secret mermaid_actif=$active" >&2
   return 1
 }
 

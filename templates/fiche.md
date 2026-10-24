@@ -21,7 +21,7 @@ msg_id: "<msg_id>"
 
 ## Techniques
 <Pour chaque technique : **Nom exact** (et ses autres noms), ce que c'est et comment ça marche, assez pour en
-parler avec un dev. Code et images sous la technique qu'ils illustrent.>
+parler avec un dev. Schémas Mermaid, code et images sous la technique qu'ils illustrent.>
 
 ## Quand l'utiliser
 - **Signaux :** <ce qu'on observe sur un projet qui appelle cette technique.>
