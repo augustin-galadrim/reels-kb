@@ -42,7 +42,7 @@ def main():
     state = load_state()
     ready = {q["msg_id"]: q for q in queue if q["status"] == "ready"}
 
-    titles = []
+    titles, published = [], []
     for fiche in sorted((KB / "fiches").glob("*/*.md")):
         meta = frontmatter(fiche)
         msg_id = meta.get("msg_id")
@@ -52,6 +52,8 @@ def main():
         state["processed"][msg_id] = {"fiche": str(fiche.relative_to(KB)), "date": date.today().isoformat()}
         state["failures"].pop(msg_id, None)
         titles.append(meta.get("titre") or fiche.stem)
+        published.append(str(fiche.relative_to(KB)))
+    (WORK / "published.txt").write_text("".join(f"{p}\n" for p in published))
 
     missing = [q for q in ready.values() if q["msg_id"] not in state["processed"]]
     for q in missing:
