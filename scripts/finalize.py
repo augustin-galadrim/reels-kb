@@ -8,6 +8,7 @@
 """
 import re
 import shutil
+import sys
 from datetime import date
 
 from common import CONFIG, KB, WORK, load_queue, load_state, record_failure, save_state
@@ -37,7 +38,19 @@ def copy_assets(fiche, short_id):
             shutil.copyfile(src, dest)
 
 
+def refused():
+    """Publication refusée par le contrôle de sécurité : chaque réel prêt du lot compte un échec."""
+    state = load_state()
+    for q in load_queue():
+        if q["status"] == "ready":
+            state["processed"].pop(q["msg_id"], None)
+            record_failure(state, q["msg_id"], "publication refusée par le contrôle de sécurité")
+    save_state(state)
+
+
 def main():
+    if "--refused" in sys.argv:
+        return refused()
     queue = load_queue()
     state = load_state()
     ready = {q["msg_id"]: q for q in queue if q["status"] == "ready"}

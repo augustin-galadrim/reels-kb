@@ -14,13 +14,38 @@ export KB_DIR="${KB_DIR:-$(cd "$ROOT/.." && pwd)/kb-reels}"
 PY="${PYTHON:-python3}"
 cd "$ROOT"
 
+# Contrôles avant commit des changements faits par le rédacteur (qui a lu du contenu non fiable) :
+# ajouts seulement sur l'existant, nommage attendu des nouveaux fichiers, aucun jeton dans le texte ajouté.
+check_fiches() {
+  local shrunk new_bad secret
+  shrunk=$(git diff --cached --numstat --diff-filter=MD -- fiches | awk '$2 != "0" {print $3}')
+  new_bad=$(git diff --cached --name-only --diff-filter=A -- fiches | grep -vE \
+    '^fiches/(INDEX\.md|(dev|ia|ux-ui|autre)/([0-9]{4}-[0-9]{2}-[0-9]{2}-[a-z0-9-]{1,60}\.md|assets/[0-9a-f]{12}-t[0-9.]+s\.jpg))$')
+  secret=$(git diff --cached -U0 -- fiches | grep -E '^\+' \
+    | grep -cE '(ghp_|gho_|ghs_|ghu_|github_pat_|sk-ant-|apify_api_|IGAA|EAA[A-Za-z0-9]{20})[A-Za-z0-9_-]{10,}')
+  [ -z "$shrunk" ] && [ -z "$new_bad" ] && [ "$secret" = "0" ] && return 0
+  echo "contrôle refusé : réécrit/supprimé=[${shrunk//$'\n'/ }] nommage=[${new_bad//$'\n'/ }] jetons=$secret" >&2
+  return 1
+}
+
 publish() {
   "$PY" scripts/finalize.py || return 1
   cd "$KB_DIR" || return 1
   [ -n "$(git status --porcelain -- fiches state)" ] || { echo "PUBLIE: rien à committer"; return 0; }
   git config user.email >/dev/null || git config user.email "noreply@anthropic.com"
   git config user.name >/dev/null || git config user.name "reels-kb"
-  git add fiches state && git commit -q -F "$ROOT/work/commit_message.txt" || return 1
+  git add -A fiches state || return 1
+  if ! check_fiches 2>>"$ROOT/work/draft.log"; then
+    # On jette tout ce qu'a fait le rédacteur ; les réels du lot comptent un échec (publié), pour qu'un réel
+    # piégé ne soit pas retraité sans fin.
+    git reset -q && git checkout -q -- fiches state && git clean -fdq fiches
+    (cd "$ROOT" && "$PY" scripts/finalize.py --refused) || return 1
+    git add state && git commit -q -m "reels: publication refusée par le contrôle de sécurité" \
+      && git push -q origin HEAD:main
+    echo "PUBLIE: REFUSÉ par le contrôle de sécurité (détail dans work/draft.log)"
+    return 1
+  fi
+  git commit -q -F "$ROOT/work/commit_message.txt" || return 1
   if git push -q origin HEAD:main 2>/dev/null \
      || { git pull -q --rebase origin main && git push -q origin HEAD:main; }; then
     echo "PUBLIE: $(head -1 "$ROOT/work/commit_message.txt") sur main"
@@ -51,6 +76,7 @@ Repo de la KB : $KB_DIR" \
     --add-dir "$KB_DIR" \
     --allowedTools "Edit(/$KB_DIR/fiches/**)" \
     --disallowedTools Bash WebFetch WebSearch Agent Task NotebookEdit \
+      "Read(/$KB_DIR/.git/**)" "Read(/$ROOT/.git/**)" "Read(/$KB_DIR/state/**)" \
     --setting-sources project \
     --strict-mcp-config \
     --no-session-persistence \
