@@ -62,7 +62,9 @@ def main():
         if msg_id not in ready or msg_id in state["processed"]:
             continue
         copy_assets(fiche, ready[msg_id]["short_id"])
-        state["processed"][msg_id] = {"fiche": str(fiche.relative_to(KB)), "date": date.today().isoformat()}
+        code = re.search(r"/(?:reel|reels|p|tv)/([A-Za-z0-9_-]+)", ready[msg_id].get("permalink") or "")
+        state["processed"][msg_id] = {"fiche": str(fiche.relative_to(KB)), "date": date.today().isoformat(),
+                                      "shortcode": code.group(1) if code else None}
         state["failures"].pop(msg_id, None)
         titles.append(meta.get("titre") or fiche.stem)
         published.append(str(fiche.relative_to(KB)))

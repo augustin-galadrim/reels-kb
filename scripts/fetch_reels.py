@@ -104,8 +104,10 @@ def new_reels(state):
     me = (ig_get("me", fields="user_id,username").get("username") or "").lower()
     allowed = {u.lower() for u in CONFIG["allowed_senders"]}
     known = set(state["processed"]) | set(state["skipped"])
+    # Un même réel partagé deux fois ne donne qu'une fiche.
+    done_codes = {v["shortcode"]: v["fiche"] for v in state["processed"].values() if v.get("shortcode")}
     today = date.today().isoformat()
-    found = []
+    found, batch_codes = [], set()
     for conv in ig_get("me/conversations", platform="instagram", fields="id").get("data", []):
         msgs = ig_get(conv["id"], fields="messages").get("messages", {}).get("data", [])
         if len(msgs) > 20 and msgs[20]["id"] not in known:
@@ -123,7 +125,12 @@ def new_reels(state):
                 state["skipped"][msg["id"]] = {"reason": f"expéditeur non autorisé : {sender}", "date": today}
             elif not permalink:
                 state["skipped"][msg["id"]] = {"reason": "pas de réel", "date": today}
+            elif code in done_codes:
+                state["skipped"][msg["id"]] = {"reason": f"doublon de {done_codes[code]}", "date": today}
+            elif code in batch_codes:
+                state["skipped"][msg["id"]] = {"reason": f"doublon du réel {code} dans le même lot", "date": today}
             else:
+                batch_codes.add(code)
                 found.append({"msg_id": msg["id"], "created_time": msg.get("created_time") or "",
                               "sender": sender, "permalink": permalink, "shortcode": code,
                               "message": msg.get("message") or ""})

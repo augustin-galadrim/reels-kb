@@ -28,7 +28,7 @@ check_fiches() {
   return 1
 }
 
-publish() {
+publish() (  # sous-shell : le cd vers la KB ne doit pas changer le dossier de l'appelant
   "$PY" scripts/finalize.py || return 1
   cd "$KB_DIR" || return 1
   [ -n "$(git status --porcelain -- fiches state)" ] || { echo "PUBLIE: rien à committer"; return 0; }
@@ -54,7 +54,7 @@ publish() {
     git push -q origin "HEAD:$branch" && echo "PUBLIE: push sur main refusé, poussé sur $branch" \
       || { echo "PUBLIE: ÉCHEC du push"; return 1; }
   fi
-}
+)
 
 prepare() {
   [ -d "$KB_DIR/.git" ] || { echo "STATUT: ALERTE repo de la KB introuvable ($KB_DIR)"; return 2; }
