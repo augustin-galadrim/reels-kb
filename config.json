@@ -1,0 +1,9 @@
+{
+  "allowed_senders": ["augustinlezinzin"],
+  "ig_token_expires": "2026-11-27",
+  "warn_days_before_expiry": 10,
+  "max_reels_per_run": 5,
+  "max_attempts": 3,
+  "max_frames": 15,
+  "apify_actor": "apify~instagram-reel-scraper"
+}

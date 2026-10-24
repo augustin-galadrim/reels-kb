@@ -1,58 +1,68 @@
 # reels-kb
 
-Tu partages un réel en DM à ton compte Instagram dédié. Plus tard, une routine Claude Code le récupère, le regarde, rédige une fiche technique et la commite ici.
+Tu partages un réel en DM depuis `augustinlezinzin` au compte dédié `reels.gus`. Une fois par jour, une routine
+Claude Code dans le cloud le récupère, le regarde, rédige une fiche technique et la pousse dans le repo de la KB,
+[kb-reels](https://github.com/augustin-galadrim/kb-reels). Ce repo-ci ne contient que le code.
 
-Aucun serveur ni webhook : la routine tourne dans le cloud d'Anthropic et interroge la boîte de réception via l'API officielle d'Instagram.
-
+```text
+routine cloud quotidienne (environnement « reels »)
+  scripts/run.sh prepare
+    ├─ fetch_reels.py   API Instagram (DM → permaliens) → Apify (vidéo, son, légende, auteur)
+    └─ extract.py       ffmpeg (≤ 15 images, une par état visuel distinct) + faster-whisper (transcription)
+  Claude               regarde, rédige kb-reels/fiches/<cat>/<date>-<slug>.md
+  scripts/run.sh publish
+    └─ finalize.py      images clés, état, message de commit → commit + push sur kb-reels/main
 ```
-DM Instagram ──► routine Claude Code (planifiée)
-                   ├─ fetch_reels.py   API Conversations → vidéo
-                   ├─ extract.py       ffmpeg (images) + faster-whisper (audio)
-                   ├─ Claude           regarde, rédige fiches/<cat>/<date>-<slug>.md
-                   └─ git commit + push
-```
 
-## 1. Compte Instagram dédié
-1. Crée le compte, puis passe-le en **compte professionnel** (type Créateur, c'est gratuit).
-2. Dans l'app Instagram de ce compte, va dans *Paramètres → Messages et réponses aux stories → Outils connectés* et active **Autoriser l'accès aux messages**.
-3. Depuis ton compte perso, envoie-lui un premier message. L'API ne voit que les conversations initiées par l'autre personne.
+## Pourquoi Apify
+L'API officielle d'Instagram ne donne jamais la vidéo d'un réel partagé en DM, seulement son permalien
+(vérifié le 07/10/2026, API Conversations et webhook). L'acteur Apify `apify/instagram-reel-scraper` renvoie la vidéo,
+le son séparé quand il le faut, la légende et l'auteur, sans compte Instagram (testé le 24/10/2026 : 15 réels sur 15,
+14 avec le son ; environ 0,0025 $ par réel, dans le crédit gratuit de 5 $/mois).
 
-## 2. App Meta et jeton
-1. Sur [developers.facebook.com](https://developers.facebook.com), crée une app de type Business et ajoute le produit **Instagram**, en choisissant *API with Instagram Login*.
-2. Ajoute le compte dédié comme testeur de l'app. En mode développement, la validation Meta n'est pas nécessaire pour un usage personnel.
-3. Génère un jeton pour ce compte avec les permissions `instagram_business_basic` et `instagram_business_manage_messages`, puis échange-le contre un **jeton longue durée**, valable 60 jours.
+## Garde-fous (quota Claude et Apify)
+- **Une exécution par jour**, jamais relancée automatiquement.
+- **Fail fast** : le jeton Instagram est vérifié en premier ; sans nouveau réel, la routine s'arrête avant Apify,
+  Whisper et toute rédaction. Le modèle Whisper n'est chargé que si un réel a du son.
+- **Au plus 5 réels par exécution** (`config.json`), le reste passe le lendemain.
+- **Pas de retraitement sans fin** : chaque échec propre à un réel est compté ; au bout de 3, le réel est ignoré
+  (`kb-reels/state/processed.json`). Une panne d'Instagram ou d'Apify arrête le lot sans pénaliser les réels.
+- **Moins de tokens d'images** : au plus 15 images par réel, une par état visuel distinct (les doublons des jump cuts sont fusionnés).
+- **Notifications push** : jeton bientôt expiré (10 jours avant), jeton expiré, Apify refusé (jeton ou quota),
+  erreur temporaire, réels en échec, fiches publiées.
+- **Côté Apify** : fixe une limite mensuelle à 5 $ dans la console (*Billing → Limits*) pour ne jamais payer.
 
-Rafraîchis le jeton tous les 50 jours environ, puis mets à jour la variable dans l'environnement de la routine :
+## Réglages de l'environnement cloud « reels »
+- **Réseau** : *Limité*, avec « Autoriser les gestionnaires de paquets » coché, et les domaines
+  `graph.instagram.com`, `*.cdninstagram.com`, `*.fbcdn.net`, `huggingface.co`, `*.huggingface.co`, `*.hf.co`.
+- **Secrets réseau** (le jeton n'entre jamais dans la machine, le proxy l'ajoute) :
+  `graph.instagram.com` → jeton Instagram de `reels.gus` ; `api.apify.com` → jeton Apify (Bearer).
+- **Setup script** (mis en cache entre les exécutions) :
+  ```bash
+  #!/bin/bash
+  exec > /tmp/setup.log 2>&1
+  set -x
+  PKGS="faster-whisper==1.2.1 av<19 requests"   # av 19 casse faster-whisper 1.2.1 (metadata_errors)
+  python3 -m pip install $PKGS || python3 -m pip install --break-system-packages $PKGS
+  python3 -c "from faster_whisper import WhisperModel; WhisperModel('small', device='cpu', compute_type='int8')"
+  exit 0
+  ```
+- **Routine** « Réels → fiches » : repos `reels-kb` et `kb-reels`, prompt = `ROUTINE_PROMPT.md`, push autorisé sur `main`.
+
+## Renouveler le jeton
+Le jeton longue durée de `reels.gus` vaut 60 jours (le prochain expire le **27/11/2026**).
+1. Tableau de bord Meta, app `reels-kb-IG`, *API setup with Instagram Login* : génère un nouveau jeton pour `reels.gus`.
+2. claude.ai/code, environnement `reels`, secrets réseau : remplace la valeur pour `graph.instagram.com`.
+3. Mets à jour `ig_token_expires` dans `config.json` (date du jour + 60 jours) et pousse sur `main`.
+
+## Tester en local
 ```bash
-curl "https://graph.instagram.com/refresh_access_token?grant_type=ig_refresh_token&access_token=$IG_ACCESS_TOKEN"
+python3 -m venv venv && venv/bin/pip install -r requirements.txt   # + ffmpeg (brew install ffmpeg)
+git clone https://github.com/augustin-galadrim/kb-reels ../kb-reels
+IG_ACCESS_TOKEN=... APIFY_TOKEN=... PYTHON=venv/bin/python bash scripts/run.sh prepare
 ```
 
-## 3. Test en local (étape clé)
-Partage un réel au compte dédié, puis lance :
-```bash
-pip install -r requirements.txt
-export IG_ACCESS_TOKEN=...
-python scripts/fetch_reels.py --debug
-```
-Examine le JSON brut. L'essentiel est de trouver une **URL vidéo directe** (`video_data.url`, `file_url` ou `payload.url`, qui pointe vers un domaine `cdninstagram` ou `fbcdn`), et pas seulement un lien `instagram.com/reel/...`.
-- **Si l'URL directe est présente**, tout le pipeline fonctionne. Lance `python scripts/fetch_reels.py` puis `python scripts/extract.py`, et vérifie le contenu de `work/`.
-- **Si seul le permalien apparaît**, la lecture par sondage ne suffit pas pour ton compte. Le plan B consiste à ajouter un webhook minimal (un Cloudflare Worker gratuit) qui reçoit l'`ig_reel` en temps réel. Le reste du pipeline ne change pas.
-
-## 4. Repo et routine
-1. Pousse ce dossier dans un **repo GitHub privé**.
-2. Sur [claude.ai/code/routines](https://claude.ai/code/routines), clique sur *New routine* et configure :
-   - **Repo** : celui-ci.
-   - **Prompt** : le contenu de `ROUTINE_PROMPT.md`.
-   - **Environnement**, variables : `IG_ACCESS_TOKEN` et `IG_ALLOWED_SENDERS=ton_compte_perso`. Ce filtre fait que seuls tes partages sont traités, et pas les DM d'inconnus.
-   - **Environnement**, accès réseau : en plus des registres de paquets, autorise `graph.instagram.com`, `*.cdninstagram.com`, `*.fbcdn.net`, `huggingface.co` et `*.hf.co` (pour télécharger le modèle Whisper).
-   - **Environnement**, setup script : `bash scripts/setup.sh`.
-   - **Déclencheur** : planifié, toutes les 4 à 6 heures par exemple.
-   - **Branches** : par défaut, une routine ne pousse que sur des branches `claude/...`. Autorise le push sur `main` si tu veux que les fiches arrivent directement, sinon fusionne les PR.
-3. Lance la routine une première fois à la main et lis le résumé.
-
-## Limites à connaître
-- **20 messages** : l'API ne donne le détail que des 20 derniers messages d'une conversation. Si tu partages plus de 20 réels entre deux exécutions, les plus anciens sont perdus. Le script t'avertit dans ce cas ; il suffit d'augmenter la fréquence.
-- **Liens temporaires** : les URL vidéo expirent, mais chaque exécution redemande des URL fraîches à l'API.
-- **Coût** : chaque exécution consomme ton quota Claude. Quand il n'y a rien de nouveau, la routine s'arrête vite.
-- **Whisper** : le modèle `small` est un bon compromis. Passe `WHISPER_MODEL=medium` si les transcriptions sont approximatives, ou `base` pour aller plus vite.
-- **Droits** : les réels appartiennent à leurs créateurs. Garde le repo privé et cite la source dans chaque fiche, ce que le template fait déjà.
+## Limites
+- L'API ne lit que les 20 derniers messages d'une conversation : plus de 20 partages entre deux exécutions → les plus anciens sont perdus.
+- Certains réels n'ont pas de son accessible sans compte : la fiche est alors faite à partir des images et de la légende.
+- Les réels appartiennent à leurs créateurs : la KB est privée et chaque fiche cite sa source.

@@ -1,2 +1,3 @@
 requests>=2.31
-faster-whisper>=1.0
+faster-whisper==1.2.1
+av<19  # av 19 a retiré metadata_errors, utilisé par faster-whisper 1.2.1
