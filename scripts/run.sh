@@ -20,7 +20,7 @@ check_fiches() {
   local shrunk new_bad secret
   shrunk=$(git diff --cached --numstat --diff-filter=MD -- fiches | awk '$2 != "0" {print $3}')
   new_bad=$(git diff --cached --name-only --diff-filter=A -- fiches | grep -vE \
-    '^fiches/(INDEX\.md|(dev|ia|ux-ui|autre)/([0-9]{4}-[0-9]{2}-[0-9]{2}-[a-z0-9-]{1,60}\.md|assets/[0-9a-f]{12}-t[0-9.]+s(-y[0-9]{1,3}-[0-9]{1,3})?\.jpg))$')
+    '^fiches/(INDEX\.md|themes/[a-z0-9-]{1,60}\.md|reels/([0-9]{4}-[0-9]{2}-[0-9]{2}-[a-z0-9-]{1,60}\.md|assets/[0-9a-f]{12}-t[0-9.]+s(-y[0-9]{1,3}-[0-9]{1,3})?\.jpg))$')
   secret=$(git diff --cached -U0 -- fiches | grep -E '^\+' \
     | grep -cE '(ghp_|gho_|ghs_|ghu_|github_pat_|sk-ant-|apify_api_|IGAA|EAA[A-Za-z0-9]{20})[A-Za-z0-9_-]{10,}')
   [ -z "$shrunk" ] && [ -z "$new_bad" ] && [ "$secret" = "0" ] && return 0
@@ -96,8 +96,8 @@ case "${1:-}" in
     # restent dans le message de commit. Noms de fichiers filtrés sur [a-z0-9-].
     n=0
     while IFS= read -r path; do
-      slug="$(basename "$path" .md)"; cat_="$(basename "$(dirname "$path")")"
-      [[ "$cat_" =~ ^(dev|ia|ux-ui|autre)$ && "$slug" =~ ^[a-z0-9-]{1,60}$ ]] && echo "FICHE: $cat_/$slug"
+      slug="$(basename "$path" .md)"
+      [[ "$path" == fiches/reels/* && "$slug" =~ ^[0-9a-z-]{1,72}$ ]] && echo "FICHE: $slug"
       n=$((n + 1))
     done < <(cat work/published.txt 2>/dev/null)
     echo "STATUT: PUBLIE $n fiche(s), commit $(git -C "$KB_DIR" rev-parse --short HEAD)"

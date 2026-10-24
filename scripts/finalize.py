@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Termine une exécution, après la rédaction des fiches par Claude :
-- copie dans <KB>/fiches/<categorie>/assets/ les images clés que les fiches référencent
+- copie dans <KB>/fiches/reels/assets/ les images clés que les fiches référencent
   (convention : assets/<short_id>-<image de frames>[-y<début>-<fin>].jpg, max_assets par fiche au plus ;
   le suffixe -y garde la bande horizontale entre <début> et <fin> % de la hauteur) ;
 - marque comme traité chaque réel dont la fiche existe (champ msg_id du frontmatter) ;
@@ -68,7 +68,7 @@ def main():
     ready = {q["msg_id"]: q for q in queue if q["status"] == "ready"}
 
     titles, published = [], []
-    for fiche in sorted((KB / "fiches").glob("*/*.md")):
+    for fiche in sorted((KB / "fiches" / "reels").glob("*.md")):
         meta = frontmatter(fiche)
         msg_id = meta.get("msg_id")
         if msg_id not in ready or msg_id in state["processed"]:

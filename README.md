@@ -9,7 +9,7 @@ routine cloud quotidienne (environnement « reels »)
   scripts/run.sh prepare
     ├─ fetch_reels.py   API Instagram (DM → permaliens) → Apify (vidéo, son, légende, auteur)
     └─ extract.py       ffmpeg (≤ 20 images, une par état visuel distinct) + faster-whisper (transcription)
-  Claude               regarde, rédige kb-reels/fiches/<cat>/<date>-<slug>.md
+  Claude               regarde, rédige kb-reels/fiches/reels/<date>-<slug>.md et l'ajoute à ses thèmes
   scripts/run.sh publish
     └─ finalize.py      images clés, état, message de commit → commit + push sur kb-reels/main
 ```
